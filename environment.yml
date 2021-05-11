@@ -1,0 +1,20 @@
+name: 231n_project_local
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.7
+  - numpy
+  - scipy
+  - tqdm
+  - pytorch
+  - torchvision
+  - scikit-image
+  - h5py
+  - medpy
+  - tensorboard
+  - pip
+  - pip:
+    - segmentation-models-pytorch
+    - batchgenerators
+    - SimpleITK
