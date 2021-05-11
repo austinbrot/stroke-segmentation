@@ -172,6 +172,7 @@ class Trainer:
             self.logger.scalar_summary("val_dsc", mean_dsc, self.iteration + 1)
         
         terminal_logger.info(f"{split} dsc: {mean_dsc}, loss: {mean_loss}")
+        print(f"{split} dsc: {mean_dsc}, loss: {mean_loss}")
         return mean_dsc, mean_loss
 
 
@@ -189,6 +190,7 @@ class Trainer:
                     self.save_checkpoint()
                     if loss < self.best_loss:
                         terminal_logger.info(f'New best checkpoint at epoch {epoch}')
+                        print(f'New best checkpoint at epoch {epoch}')
                         self.save_checkpoint(prefix='best')
                         self.best_loss = loss
 
@@ -196,6 +198,7 @@ class Trainer:
             dsc, loss = self.test_epoch(val_data, 'val')
             if loss < self.best_loss:
                 terminal_logger.info(f'New best checkpoint at end')
+                print(f'New best checkpoint at end')
                 self.save_checkpoint(prefix='best')
                 self.best_loss = loss
 
