@@ -22,6 +22,7 @@ def main(args):
 
     model = smp.Unet(
         encoder_name='efficientnet-b0',
+        encoder_weights=None,
         in_channels=3,
         classes=1
     )
