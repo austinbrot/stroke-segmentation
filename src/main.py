@@ -16,9 +16,9 @@ def main(args):
     makedirs(args)
     snapshotargs(args)
 
-    train_data, val_data, test_dataset = datasets(args)
+    dsc_loss = smp.utils.losses.DiceLoss()
 
-    dsc_loss = smp.utils.losses.DiceLoss('binary')
+    train_data, val_data, test_dataset = datasets(args)
 
     model = smp.Unet(
         encoder_name='efficientnet-b0',
@@ -31,8 +31,8 @@ def main(args):
     logger = Logger(args.logs)
 
     config = TrainerConfig(
-        max_epochs=1,
-        batch_size=16,
+        max_epochs=args.epochs,
+        batch_size=args.batch_size,
         ckpt_path=args.weights,
         save_epochs=1,
         log_frequency=10,

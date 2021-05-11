@@ -1,4 +1,5 @@
 import os
+from os.path import isdir
 import random
 
 import numpy as np
@@ -23,8 +24,7 @@ class BrainSegmentationDataset(Dataset):
         random_sampling=True,
         seed=42,
     ):
-
-        # read images
+    # read images
         volumes = {}
         masks = {}
         print("reading images...")

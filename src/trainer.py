@@ -109,7 +109,7 @@ class Trainer:
                 optimizer.step()
             
             if (self.iteration + 1) % config.log_frequency == 0:
-                self.log_loss_summary(self.train_loss, self.iteration + 1)
+                self.log_loss_summary(self.train_loss, self.iteration + 1, prefix='train')
                 self.train_loss = []
 
             self.iteration += 1
