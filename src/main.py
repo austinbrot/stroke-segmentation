@@ -18,7 +18,7 @@ def main(args):
 
     train_data, val_data, test_dataset = datasets(args)
 
-    dsc_loss = smp.losses.DiceLoss('binary')
+    dsc_loss = smp.utils.losses.DiceLoss('binary')
 
     model = smp.Unet(
         encoder_name='efficientnet-b0',
