@@ -22,8 +22,11 @@ class BrainSegmentationDataset(Dataset):
         transform=None,
         image_size=256,
         random_sampling=True,
+        subset='train',
         seed=42,
     ):
+
+        self.subset = subset
     # read images
         volumes = {}
         masks = {}

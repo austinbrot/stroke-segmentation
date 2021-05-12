@@ -2,75 +2,171 @@ import argparse
 import json
 import os
 
+import numpy as np
+import torch
 import torch.optim as optim
-import segmentation_models_pytorch as smp
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset as Dataset
 from logger import Logger
 from loss import DiceLoss
-from trainer import Trainer, TrainerConfig
 from transform import transforms
+from unet import UNet
+from utils import log_images, dsc
 
 
 def main(args):
     makedirs(args)
     snapshotargs(args)
+    device = torch.device(
+        "cpu" if not torch.cuda.is_available() else args.device)
 
-    dsc_loss = smp.utils.losses.DiceLoss()
+    loader_train, loader_valid = data_loaders(args)
+    loaders = {"train": loader_train, "valid": loader_valid}
 
-    train_data, val_data, test_dataset = datasets(args)
+    unet = UNet(in_channels=Dataset.in_channels,
+                out_channels=Dataset.out_channels)
+    unet.to(device)
 
-    model = smp.Unet(
-        encoder_name='efficientnet-b0',
-        encoder_weights=None,
-        in_channels=3,
-        classes=1
-    )
+    dsc_loss = DiceLoss()
+    best_validation_dsc = 0.0
 
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
     logger = Logger(args.logs)
+    loss_train = []
+    loss_valid = []
 
-    config = TrainerConfig(
-        max_epochs=args.epochs,
+    step = 0
+
+    for epoch in tqdm(range(args.epochs), total=args.epochs):
+        for phase in ["train", "valid"]:
+            if phase == "train":
+                unet.train()
+            else:
+                unet.eval()
+
+            validation_pred = []
+            validation_true = []
+
+            for i, data in enumerate(loaders[phase]):
+                if phase == "train":
+                    step += 1
+
+                x, y_true = data
+                x, y_true = x.to(device), y_true.to(device)
+
+                optimizer.zero_grad()
+
+                with torch.set_grad_enabled(phase == "train"):
+                    y_pred = unet(x)
+
+                    loss = dsc_loss(y_pred, y_true)
+
+                    if phase == "valid":
+                        loss_valid.append(loss.item())
+                        y_pred_np = y_pred.detach().cpu().numpy()
+                        validation_pred.extend(
+                            [y_pred_np[s] for s in range(y_pred_np.shape[0])]
+                        )
+                        y_true_np = y_true.detach().cpu().numpy()
+                        validation_true.extend(
+                            [y_true_np[s] for s in range(y_true_np.shape[0])]
+                        )
+                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
+                            if i * args.batch_size < args.vis_images:
+                                tag = "image/{}".format(i)
+                                num_images = args.vis_images - i * args.batch_size
+                                logger.image_list_summary(
+                                    tag,
+                                    log_images(x, y_true, y_pred)[:num_images],
+                                    step,
+                                )
+
+                    if phase == "train":
+                        loss_train.append(loss.item())
+                        loss.backward()
+                        optimizer.step()
+
+                if phase == "train" and (step + 1) % 10 == 0:
+                    log_loss_summary(logger, loss_train, step)
+                    loss_train = []
+
+            if phase == "valid":
+                log_loss_summary(logger, loss_valid, step, prefix="val_")
+                mean_dsc = np.mean(
+                    dsc_per_volume(
+                        validation_pred,
+                        validation_true,
+                        loader_valid.dataset.patient_slice_index,
+                    )
+                )
+                logger.scalar_summary("val_dsc", mean_dsc, step)
+                if mean_dsc > best_validation_dsc:
+                    best_validation_dsc = mean_dsc
+                    torch.save(unet.state_dict(), os.path.join(
+                        args.weights, "unet.pt"))
+                loss_valid = []
+
+    print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
+
+
+def data_loaders(args):
+    dataset_train, dataset_valid = datasets(args)
+
+    def worker_init(worker_id):
+        np.random.seed(42 + worker_id)
+
+    loader_train = DataLoader(
+        dataset_train,
         batch_size=args.batch_size,
-        ckpt_path=args.weights,
-        save_epochs=1,
-        log_frequency=10,
+        shuffle=True,
+        drop_last=True,
+        num_workers=args.workers,
+        worker_init_fn=worker_init,
+    )
+    loader_valid = DataLoader(
+        dataset_valid,
+        batch_size=args.batch_size,
+        drop_last=False,
+        num_workers=args.workers,
+        worker_init_fn=worker_init,
     )
 
-    trainer = Trainer(
-        model,
-        optimizer,
-        dsc_loss,
-        config,
-        train_data,
-        val_data,
-        test_dataset,
-        logger=logger
-    )
-
-    trainer.train()
-    logger.close()
+    return loader_train, loader_valid
 
 
 def datasets(args):
     train = Dataset(
         images_dir=args.train_data,
+        subset="train",
         image_size=args.image_size,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
     )
     valid = Dataset(
         images_dir=args.val_data,
+        subset="validation",
         image_size=args.image_size,
         random_sampling=False,
     )
-    test = Dataset(
-        images_dir=args.test_data,
-        image_size=args.image_size,
-        random_sampling=False,
-    )
-    return train, valid, test
+    return train, valid
+
+
+def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
+    dsc_list = []
+    num_slices = np.bincount([p[0] for p in patient_slice_index])
+    index = 0
+    for p in range(len(num_slices)):
+        y_pred = np.array(validation_pred[index: index + num_slices[p]])
+        y_true = np.array(validation_true[index: index + num_slices[p]])
+        dsc_list.append(dsc(y_pred, y_true))
+        index += num_slices[p]
+    return dsc_list
+
+
+def log_loss_summary(logger, loss, step, prefix=""):
+    logger.scalar_summary(prefix + "loss", np.mean(loss), step)
 
 
 def makedirs(args):
@@ -137,13 +233,7 @@ if __name__ == "__main__":
         "--logs", type=str, default="./logs", help="folder to save logs"
     )
     parser.add_argument(
-        "--train_data", type=str, default="./data/brain-segmentation/train", help="root folder with train data"
-    )
-    parser.add_argument(
-        "--val_data", type=str, default="./data/brain-segmentation/val", help="root folder with val data"
-    )
-    parser.add_argument(
-        "--test_data", type=str, default="./data/brain-segmentation/test", help="root folder with test data"
+        "--images", type=str, default="./kaggle_3m", help="root folder with images"
     )
     parser.add_argument(
         "--image-size",
@@ -162,6 +252,15 @@ if __name__ == "__main__":
         type=int,
         default=15,
         help="rotation angle range in degrees for augmentation (default: 15)",
+    )
+    parser.add_argument(
+        "--train_data", type=str, default="./data/brain-segmentation/train", help="root folder with train data"
+    )
+    parser.add_argument(
+        "--val_data", type=str, default="./data/brain-segmentation/val", help="root folder with val data"
+    )
+    parser.add_argument(
+        "--test_data", type=str, default="./data/brain-segmentation/test", help="root folder with test data"
     )
     args = parser.parse_args()
     main(args)
