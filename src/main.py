@@ -31,6 +31,7 @@ def main(args):
 
     dsc_loss = DiceLoss()
     best_validation_dsc = 0.0
+    best_epoch = 0
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
@@ -107,9 +108,11 @@ def main(args):
                     best_validation_dsc = mean_dsc
                     torch.save(unet.state_dict(), os.path.join(
                         args.weights, "unet.pt"))
+                    best_epoch = epoch
                 loss_valid = []
 
     print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
+    print(f'Best model from epoch {best_epoch}')
 
 
 def data_loaders(args):
