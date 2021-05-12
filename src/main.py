@@ -74,15 +74,15 @@ def main(args):
                         validation_true.extend(
                             [y_true_np[s] for s in range(y_true_np.shape[0])]
                         )
-                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
-                            if i * args.batch_size < args.vis_images:
-                                tag = "image/{}".format(i)
-                                num_images = args.vis_images - i * args.batch_size
-                                logger.image_list_summary(
-                                    tag,
-                                    log_images(x, y_true, y_pred)[:num_images],
-                                    step,
-                                )
+                        # if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
+                        #     if i * args.batch_size < args.vis_images:
+                        #         tag = "image/{}".format(i)
+                        #         num_images = args.vis_images - i * args.batch_size
+                        #         logger.image_list_summary(
+                        #             tag,
+                        #             log_images(x, y_true, y_pred)[:num_images],
+                        #             step,
+                        #         )
 
                     if phase == "train":
                         loss_train.append(loss.item())
