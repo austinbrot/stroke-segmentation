@@ -132,6 +132,8 @@ def plot_dsc(dsc_dist):
     canvas.draw()
     plt.close()
     s, (width, height) = canvas.print_to_buffer()
+    print(f'Mean: {np.mean(values)}')
+    print(f'Median: {np.median(values)}')
     return np.fromstring(s, np.uint8).reshape((height, width, 4))
 
 
