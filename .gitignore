@@ -3,3 +3,5 @@ lgg-mri-segmentation/*
 BraTS*
 data/*
 ATLAS*
+__pycache__/*
+__MACOSX/*
