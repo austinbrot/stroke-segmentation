@@ -23,7 +23,7 @@ class Scale(object):
         self.scale = scale
 
     def __call__(self, sample):
-        has_map =len(sample) == 3
+        has_map = len(sample) == 3
 
         if has_map:
             image, mask, distance_map = sample
@@ -51,15 +51,17 @@ class Scale(object):
             mode="constant",
             anti_aliasing=False,
         )
-        distance_map = rescale(
-            distance_map,
-            (scale, scale),
-            order=0,
-            multichannel=True,
-            preserve_range=True,
-            mode="constant",
-            anti_aliasing=False,
-        )
+
+        if has_map:
+            distance_map = rescale(
+                distance_map,
+                (scale, scale),
+                order=0,
+                multichannel=True,
+                preserve_range=True,
+                mode="constant",
+                anti_aliasing=False,
+            )
 
         if scale < 1.0:
             diff = (img_size - image.shape[0]) / 2.0
@@ -128,7 +130,8 @@ class HorizontalFlip(object):
 
         image = np.fliplr(image).copy()
         mask = np.fliplr(mask).copy()
-        distance_map = np.fliplr(distance_map).copy()
+        if has_map:
+            distance_map = np.fliplr(distance_map).copy()
 
         if has_map:
             return image, mask, distance_map
