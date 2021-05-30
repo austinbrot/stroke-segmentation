@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.lib.type_check import imag
 from skimage.transform import rescale, rotate
 from torchvision.transforms import Compose
 
@@ -22,7 +23,12 @@ class Scale(object):
         self.scale = scale
 
     def __call__(self, sample):
-        image, mask = sample
+        has_map =len(sample) == 3
+
+        if has_map:
+            image, mask, distance_map = sample
+        else:
+            image, mask = sample
 
         img_size = image.shape[0]
 
@@ -45,18 +51,33 @@ class Scale(object):
             mode="constant",
             anti_aliasing=False,
         )
+        distance_map = rescale(
+            distance_map,
+            (scale, scale),
+            order=0,
+            multichannel=True,
+            preserve_range=True,
+            mode="constant",
+            anti_aliasing=False,
+        )
 
         if scale < 1.0:
             diff = (img_size - image.shape[0]) / 2.0
             padding = ((int(np.floor(diff)), int(np.ceil(diff))),) * 2 + ((0, 0),)
             image = np.pad(image, padding, mode="constant", constant_values=0)
             mask = np.pad(mask, padding, mode="constant", constant_values=0)
+            if has_map:
+                distance_map = np.pad(distance_map, padding, mode="constant", constant_values=0)
         else:
             x_min = (image.shape[0] - img_size) // 2
             x_max = x_min + img_size
             image = image[x_min:x_max, x_min:x_max, ...]
             mask = mask[x_min:x_max, x_min:x_max, ...]
+            if has_map:
+                distance_map = distance_map[x_min:x_max, x_min:x_max, ...]
 
+        if has_map:
+            return image, mask, distance_map
         return image, mask
 
 
@@ -66,13 +87,24 @@ class Rotate(object):
         self.angle = angle
 
     def __call__(self, sample):
-        image, mask = sample
+        has_map = len(sample) == 3
+        if has_map:
+            image, mask, distance_map = sample
+        else:
+            image, mask = sample
 
         angle = np.random.uniform(low=-self.angle, high=self.angle)
         image = rotate(image, angle, resize=False, preserve_range=True, mode="constant")
         mask = rotate(
             mask, angle, resize=False, order=0, preserve_range=True, mode="constant"
         )
+        if has_map:
+            distance_map = rotate(
+                distance_map, angle, resize=False, order=0, preserve_range=True, mode="constant"
+            )
+        
+        if has_map:
+            return image, mask, distance_map
         return image, mask
 
 
@@ -82,12 +114,22 @@ class HorizontalFlip(object):
         self.flip_prob = flip_prob
 
     def __call__(self, sample):
-        image, mask = sample
+        has_map = len(sample) == 3
+
+        if has_map:
+            image, mask, distance_map = sample
+        else:
+            image, mask = sample
 
         if np.random.rand() > self.flip_prob:
+            if has_map:
+                return image, mask, distance_map
             return image, mask
 
         image = np.fliplr(image).copy()
         mask = np.fliplr(mask).copy()
+        distance_map = np.fliplr(distance_map).copy()
 
+        if has_map:
+            return image, mask, distance_map
         return image, mask

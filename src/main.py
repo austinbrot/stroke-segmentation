@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from typing import DefaultDict
 
 import numpy as np
 import torch
@@ -8,9 +9,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import BrainSegmentationDataset as Dataset
+from dataset import BrainSegmentationDataset, DistanceMapDataset 
 from logger import Logger
-from loss import DiceLoss
+from loss import DiceLoss, DistanceMapLoss
 from transform import transforms
 from unet import UNet
 from utils import log_images, dsc
@@ -25,11 +26,15 @@ def main(args):
     loader_train, loader_valid = data_loaders(args)
     loaders = {"train": loader_train, "valid": loader_valid}
 
-    unet = UNet(in_channels=Dataset.in_channels,
-                out_channels=Dataset.out_channels)
+    unet = UNet(in_channels=BrainSegmentationDataset.in_channels,
+                out_channels=BrainSegmentationDataset.out_channels)
     unet.to(device)
 
-    dsc_loss = DiceLoss()
+    if args.use_distance_map:
+        loss_fn = DistanceMapLoss()
+    else:
+        loss_fn = DiceLoss()
+    dsc_fn = DiceLoss()
     best_validation_dsc = 0.0
     best_epoch = 0
 
@@ -38,6 +43,8 @@ def main(args):
     logger = Logger(args.logs)
     loss_train = []
     loss_valid = []
+    dsc_train = []
+    dsc_valid = []
 
     step = 0
 
@@ -55,18 +62,26 @@ def main(args):
                 if phase == "train":
                     step += 1
 
-                x, y_true = data
-                x, y_true = x.to(device), y_true.to(device)
+                if args.use_distance_map:
+                    x, y_true, y_map = data
+                    x, y_true, y_map = x.to(device), y_true.to(device), y_map.to(device)
+                else:
+                    x, y_true = data
+                    x, y_true = x.to(device), y_true.to(device)
 
                 optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == "train"):
                     y_pred = unet(x)
 
-                    loss = dsc_loss(y_pred, y_true)
-
+                    if args.use_distance_map:
+                        loss = loss_fn(y_pred, y_true, y_map)
+                    else:
+                        loss = loss_fn(y_pred, y_true)
+                    
                     if phase == "valid":
                         loss_valid.append(loss.item())
+                        dsc_valid.append(dsc_fn(y_pred, y_true).item())
                         y_pred_np = y_pred.detach().cpu().numpy()
                         validation_pred.extend(
                             [y_pred_np[s] for s in range(y_pred_np.shape[0])]
@@ -86,16 +101,21 @@ def main(args):
                         #         )
 
                     if phase == "train":
+                        with torch.set_grad_enabled(False):
+                            dsc_train.append(dsc_fn(y_pred, y_true).item())
                         loss_train.append(loss.item())
                         loss.backward()
                         optimizer.step()
 
                 if phase == "train" and (step + 1) % 10 == 0:
                     log_loss_summary(logger, loss_train, step)
+                    log_loss_summary(logger, dsc_train, step, prefix="dsc_train_")
                     loss_train = []
+                    dsc_train = []
 
             if phase == "valid":
                 log_loss_summary(logger, loss_valid, step, prefix="val_")
+                log_loss_summary(logger, dsc_valid, step, prefix='dsc_val_')
                 mean_dsc = np.mean(
                     dsc_per_volume(
                         validation_pred,
@@ -110,6 +130,7 @@ def main(args):
                         args.weights, "unet.pt"))
                     best_epoch = epoch
                 loss_valid = []
+                dsc_valid = []
 
     print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
     print(f'Best model from epoch {best_epoch}')
@@ -141,18 +162,34 @@ def data_loaders(args):
 
 
 def datasets(args):
-    train = Dataset(
-        images_dir=args.train_data,
-        subset="train",
-        image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
-    )
-    valid = Dataset(
-        images_dir=args.val_data,
-        subset="validation",
-        image_size=args.image_size,
-        random_sampling=False,
-    )
+    if args.use_distance_map:
+        train = DistanceMapDataset(
+            images_dir=args.train_data,
+            subset="train",
+            image_size=args.image_size,
+            transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
+            exponent=args.distance_map_exp
+        )
+        valid = DistanceMapDataset(
+            images_dir=args.val_data,
+            subset="validation",
+            image_size=args.image_size,
+            random_sampling=False,
+            exponent=args.distance_map_exp
+        )
+    else:
+        train = BrainSegmentationDataset(
+            images_dir=args.train_data,
+            subset="train",
+            image_size=args.image_size,
+            transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
+        )
+        valid = BrainSegmentationDataset(
+            images_dir=args.val_data,
+            subset="validation",
+            image_size=args.image_size,
+            random_sampling=False,
+        )
     return train, valid
 
 
@@ -264,6 +301,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test_data", type=str, default="./data/brain-segmentation/test", help="root folder with test data"
+    )
+    parser.add_argument(
+        '--use_distance_map', type=bool, default=False, help='set to true to use distance map rather than dice loss'
+    )
+    parser.add_argument(
+        '--distance_map_exp', type=float, default=1, help='exponent to use for distances in distance map loss'
     )
     args = parser.parse_args()
     main(args)

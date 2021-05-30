@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 
 
 class DiceLoss(nn.Module):
@@ -8,7 +9,7 @@ class DiceLoss(nn.Module):
         self.smooth = 1.0
 
     def forward(self, y_pred, y_true):
-        assert y_pred.size() == y_true.size()
+        assert y_pred.size() == y_true.size(), f'Pred shape {y_pred.shape} does not match target shape {y_true.shape}'
         y_pred = y_pred[:, 0].contiguous().view(-1)
         y_true = y_true[:, 0].contiguous().view(-1)
         intersection = (y_pred * y_true).sum()
@@ -16,3 +17,19 @@ class DiceLoss(nn.Module):
             y_pred.sum() + y_true.sum() + self.smooth
         )
         return 1. - dsc
+
+
+class DistanceMapLoss(nn.Module):
+    def __init__(self, smooth: float = 1.0):
+        super(DistanceMapLoss, self).__init__()
+        self.smooth = smooth
+        self.bce = nn.BCELoss(reduction='none')
+
+    def forward(self, x, y, distance_map):
+        assert x.size() == y.size()\
+            and y.size() == distance_map.size(),\
+            f'x shape {x.shape}, y shape {y.shape}, and map shape {map.shape} incompatible'
+
+        loss = self.bce(x, y)
+        loss *= distance_map + self.smooth
+        return torch.sum(loss) / loss.shape[0]
