@@ -28,6 +28,9 @@ def main(args):
 
     unet = UNet(in_channels=BrainSegmentationDataset.in_channels,
                 out_channels=BrainSegmentationDataset.out_channels)
+    if args.load_weights:
+        state_dict = torch.load(args.weights, map_location=device)
+        unet.load_state_dict(state_dict)
     unet.to(device)
 
     if args.use_distance_map:
@@ -307,6 +310,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--distance_map_exp', type=float, default=1, help='exponent to use for distances in distance map loss'
+    )
+    parser.add_argument(
+        '--load_weights', type=str, default=None, help='path to weights to lode before training'
     )
     args = parser.parse_args()
     main(args)
