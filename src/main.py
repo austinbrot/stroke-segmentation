@@ -29,7 +29,7 @@ def main(args):
     unet = UNet(in_channels=BrainSegmentationDataset.in_channels,
                 out_channels=BrainSegmentationDataset.out_channels)
     if args.load_weights:
-        state_dict = torch.load(args.weights, map_location=device)
+        state_dict = torch.load(args.load_weights, map_location=device)
         unet.load_state_dict(state_dict)
     unet.to(device)
 
