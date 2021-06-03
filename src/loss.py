@@ -26,7 +26,7 @@ class WeightedBCELoss(nn.Module):
         self.bce = nn.BCELoss(reduction='none')
 
     def forward(self, y, y_true):
-        loss = self.pos_weight * y_true * self.bce(y)
+        loss = self.pos_weight * y_true * self.bce(y, y_true)
         return torch.sum(loss) / loss.shape[0]
 
 
