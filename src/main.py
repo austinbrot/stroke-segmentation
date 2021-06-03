@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset, DistanceMapDataset 
 from logger import Logger
-from loss import DiceLoss, DistanceMapLoss
+from loss import DiceLoss, DistanceMapLoss, WeightedBCELoss
 from transform import transforms
 from unet import UNet
 from utils import log_images, dsc
@@ -35,6 +35,8 @@ def main(args):
 
     if args.use_distance_map:
         loss_fn = DistanceMapLoss()
+    elif args.use_bce_loss:
+        loss_fn = WeightedBCELoss(pos_weight=args.bce_pos_weight)
     else:
         loss_fn = DiceLoss()
     dsc_fn = DiceLoss()
@@ -307,6 +309,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--use_distance_map', type=bool, default=False, help='set to true to use distance map rather than dice loss'
+    )
+    parser.add_argument(
+        '--use_bce_loss', type=bool, default=False, help='set to true to use binary cross entropy loss'
+    )
+    parser.add_argument(
+        '--bce_pos_weight', type=float, default=1, help='weight applied to positive pixels'
     )
     parser.add_argument(
         '--distance_map_exp', type=float, default=1, help='exponent to use for distances in distance map loss'
